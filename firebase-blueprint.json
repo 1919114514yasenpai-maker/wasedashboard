@@ -1,0 +1,121 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "displayName": { "type": "string", "maxLength": 128 },
+        "photoURL": { "type": "string", "maxLength": 1024 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid", "email"]
+    },
+    "ScheduleItem": {
+      "title": "ScheduleItem",
+      "description": "Lecture timetable entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "dayOfWeek": { "type": "number" },
+        "period": { "type": "number" },
+        "subject": { "type": "string", "maxLength": 200 },
+        "room": { "type": "string", "maxLength": 100 },
+        "teacher": { "type": "string", "maxLength": 100 },
+        "color": { "type": "string", "maxLength": 50 },
+        "memo": { "type": "string", "maxLength": 500 }
+      },
+      "required": ["id", "userId", "dayOfWeek", "period", "subject"]
+    },
+    "TaskItem": {
+      "title": "TaskItem",
+      "description": "Student assignment or task",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "subject": { "type": "string", "maxLength": 100 },
+        "dueDate": { "type": "string", "maxLength": 50 },
+        "dueTime": { "type": "string", "maxLength": 20 },
+        "priority": { "type": "string", "enum": ["high", "medium", "low"] },
+        "memo": { "type": "string", "maxLength": 1000 },
+        "completed": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "title", "subject", "completed", "createdAt"]
+    },
+    "QuickLink": {
+      "title": "QuickLink",
+      "description": "Campus or productivity link",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 100 },
+        "url": { "type": "string", "maxLength": 1024 },
+        "category": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["id", "userId", "title", "url"]
+    },
+    "QuickMemo": {
+      "title": "QuickMemo",
+      "description": "Sticky note memo",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "content": { "type": "string", "maxLength": 5000 },
+        "color": { "type": "string", "maxLength": 50 },
+        "isPinned": { "type": "boolean" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "title", "content", "isPinned", "updatedAt"]
+    },
+    "SavedSimulation": {
+      "title": "SavedSimulation",
+      "description": "Saved test grade simulation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "type": { "type": "string", "enum": ["average", "weighted"] },
+        "data": { "type": "object" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "title", "type", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profile document"
+    },
+    "/users/{userId}/schedules/{scheduleId}": {
+      "schema": "ScheduleItem",
+      "description": "User timetable lecture schedule items"
+    },
+    "/users/{userId}/tasks/{taskId}": {
+      "schema": "TaskItem",
+      "description": "User homework and assignment tasks"
+    },
+    "/users/{userId}/links/{linkId}": {
+      "schema": "QuickLink",
+      "description": "User bookmark links"
+    },
+    "/users/{userId}/memos/{memoId}": {
+      "schema": "QuickMemo",
+      "description": "User sticky memos"
+    },
+    "/users/{userId}/simulations/{simulationId}": {
+      "schema": "SavedSimulation",
+      "description": "User saved grade simulations"
+    }
+  }
+}

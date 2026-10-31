@@ -1,0 +1,6 @@
+{
+  "name": "CampusHack - オールインワン学生ダッシュボード",
+  "description": "時間割カウントダウン、課題管理、テスト目標点逆算シミュレーター、クイックリンク・メモを統合した学生向けPWAダッシュボード",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

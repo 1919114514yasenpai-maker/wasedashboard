@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "CampusHack - オールインワン学生ダッシュボード",
+  "short_name": "CampusHack",
+  "description": "時間割カウントダウン、課題管理、テスト目標点逆算シミュレーター、クイックリンク・メモを統合した学生向けダッシュボード",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#0f172a",
+  "background_color": "#0f172a",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
