@@ -525,7 +525,7 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `campushack_backup_${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `wasedashboard_backup_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
     showToast('バックアップJSONを出力しました');
@@ -603,7 +603,7 @@ export default function App() {
           <div>
             <div className="flex items-center gap-2">
               <span className="font-bold tracking-tight text-lg bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent">
-                CampusHack
+                wasedashboard
               </span>
               <span className="text-[10px] font-semibold tracking-wider uppercase px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
                 PWA

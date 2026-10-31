@@ -7,3 +7,5 @@ coverage/
 .env*
 !.env.example
 .firebase/
+firebase-applet-config.json
+!firebase-applet-config.example.json
