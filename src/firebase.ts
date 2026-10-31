@@ -38,6 +38,7 @@ const defaultFirebaseConfig = {
 const activeConfig = {
   ...defaultFirebaseConfig,
   ...firebaseConfig,
+  authDomain: "wasedashboard.firebaseapp.com",
   apiKey:
     firebaseConfig && firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith('YOUR_')
       ? firebaseConfig.apiKey
