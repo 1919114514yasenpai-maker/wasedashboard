@@ -58,7 +58,7 @@ import {
   testFirestoreConnection,
 } from './firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { doc, setDoc, deleteDoc, collection, onSnapshot } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, collection, onSnapshot, getDocs, getDoc } from 'firebase/firestore';
 
 export interface TaskItem {
   id: string;
@@ -337,11 +337,7 @@ export default function App() {
         await setDoc(docRef, { ...data, userId: currentUser.uid }, { merge: true });
       }
     } catch (err) {
-      handleFirestoreError(
-        err,
-        isDelete ? OperationType.DELETE : OperationType.WRITE,
-        path
-      );
+      console.warn(`[Local Priority] Firestore cloud sync deferred for ${path}:`, err);
     }
   };
 
@@ -351,7 +347,17 @@ export default function App() {
       await signInWithPopup(auth, googleProvider);
       showToast('Googleアカウントと連携しました！', 'success');
     } catch (err: any) {
-      showToast(`ログインエラー: ${err.message || '認証に失敗しました'}`, 'error');
+      console.error('Firebase Auth Error:', err);
+      const code = err.code || '';
+      if (code === 'auth/unauthorized-domain') {
+        showToast('Firebaseの「承認済みドメイン」にこのURLの追加が必要です', 'error');
+      } else if (code === 'auth/popup-blocked') {
+        showToast('ポップアップがブロックされました。ブラウザで許可してください', 'error');
+      } else if (code === 'auth/popup-closed-by-user') {
+        showToast('ログイン画面が閉じられました', 'info');
+      } else {
+        showToast(`ログインエラー: ${code || err.message || '認証に失敗しました'}`, 'error');
+      }
     }
   };
 
@@ -508,6 +514,83 @@ export default function App() {
   }, [weightedItems, weightedTarget, finalWeight]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Manual Cloud Push/Pull Helpers (Local-First Architecture)
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
+
+  const handlePushToCloud = async () => {
+    if (!currentUser) {
+      showToast('クラウド同期にはGoogleログインが必要です', 'error');
+      return;
+    }
+    setIsSyncingCloud(true);
+    try {
+      const uid = currentUser.uid;
+      for (const item of schedule) {
+        await setDoc(doc(db, 'users', uid, 'schedules', item.id), { ...item, userId: uid }, { merge: true });
+      }
+      for (const task of tasks) {
+        await setDoc(doc(db, 'users', uid, 'tasks', task.id), { ...task, userId: uid }, { merge: true });
+      }
+      for (const link of links) {
+        await setDoc(doc(db, 'users', uid, 'links', link.id), { ...link, userId: uid }, { merge: true });
+      }
+      for (const memo of memos) {
+        await setDoc(doc(db, 'users', uid, 'memos', memo.id), { ...memo, userId: uid }, { merge: true });
+      }
+      for (const sim of savedSimulations) {
+        await setDoc(doc(db, 'users', uid, 'simulations', sim.id), { ...sim, userId: uid }, { merge: true });
+      }
+      await setDoc(doc(db, 'users', uid, 'settings', 'periodTimes'), { periodTimes }, { merge: true });
+
+      showToast('ローカルデータをFirestoreクラウドへバックアップしました！', 'success');
+    } catch (err: any) {
+      showToast(`クラウド同期エラー: ${err.message || '保存に失敗しました'}`, 'error');
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
+
+  const handlePullFromCloud = async () => {
+    if (!currentUser) {
+      showToast('クラウド同期にはGoogleログインが必要です', 'error');
+      return;
+    }
+    setIsSyncingCloud(true);
+    try {
+      const uid = currentUser.uid;
+      const schedSnap = await getDocs(collection(db, 'users', uid, 'schedules'));
+      const schedList = schedSnap.docs.map((d) => d.data() as ScheduleItem);
+      if (schedList.length > 0) setSchedule(schedList);
+
+      const taskSnap = await getDocs(collection(db, 'users', uid, 'tasks'));
+      const taskList = taskSnap.docs.map((d) => d.data() as TaskItem);
+      if (taskList.length > 0) setTasks(taskList);
+
+      const linkSnap = await getDocs(collection(db, 'users', uid, 'links'));
+      const linkList = linkSnap.docs.map((d) => d.data() as QuickLinkItem);
+      if (linkList.length > 0) setLinks(linkList);
+
+      const memoSnap = await getDocs(collection(db, 'users', uid, 'memos'));
+      const memoList = memoSnap.docs.map((d) => d.data() as QuickMemoItem);
+      if (memoList.length > 0) setMemos(memoList);
+
+      const simSnap = await getDocs(collection(db, 'users', uid, 'simulations'));
+      const simList = simSnap.docs.map((d) => d.data() as SavedSimulation);
+      if (simList.length > 0) setSavedSimulations(simList);
+
+      const setSnap = await getDoc(doc(db, 'users', uid, 'settings', 'periodTimes'));
+      if (setSnap.exists() && setSnap.data()?.periodTimes) {
+        setPeriodTimes(setSnap.data().periodTimes);
+      }
+
+      showToast('Firestoreクラウドから最新データを端末に同期しました！', 'success');
+    } catch (err: any) {
+      showToast(`クラウドデータ復元エラー: ${err.message || '取得に失敗しました'}`, 'error');
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
 
   // Backup & Restore
   const handleExportData = () => {
@@ -3006,10 +3089,54 @@ export default function App() {
             </div>
 
             <p className="text-xs text-slate-400">
-              CampusHackはデータを端末のLocalStorageおよびFirebase Firestoreに安全に保存します。端末変更やバックアップのためにJSON形式で書き出し・復元が可能です。
+              wasedashboardは **ローカルストレージ優先 (Local-First)** 設計です。端末ローカルに即時保存され、Googleログイン時はバックグラウンドで Firebase Firestore クラウドと同期されます。
             </p>
 
-            <div className="space-y-3 pt-2">
+            {/* Local & Cloud Storage Status */}
+            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">端末保存 (Local):</span>
+                <span className="font-semibold text-emerald-400 flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> 優先保存中
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">クラウド連携 (Firestore):</span>
+                {currentUser ? (
+                  <span className="font-semibold text-indigo-400 flex items-center gap-1">
+                    <Cloud className="w-3.5 h-3.5" /> 連携可能 ({currentUser.email})
+                  </span>
+                ) : (
+                  <span className="text-slate-500 flex items-center gap-1">
+                    <CloudOff className="w-3.5 h-3.5" /> 未ログイン（端末内のみ）
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-1">
+              {currentUser && (
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={handlePushToCloud}
+                    disabled={isSyncingCloud}
+                    className="p-2.5 rounded-xl bg-indigo-600/20 border border-indigo-500/30 hover:bg-indigo-600/30 text-indigo-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                  >
+                    <Cloud className="w-3.5 h-3.5 text-indigo-400" />
+                    {isSyncingCloud ? '処理中...' : 'クラウドへ手動保存'}
+                  </button>
+
+                  <button
+                    onClick={handlePullFromCloud}
+                    disabled={isSyncingCloud}
+                    className="p-2.5 rounded-xl bg-sky-600/20 border border-sky-500/30 hover:bg-sky-600/30 text-sky-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-sky-400" />
+                    {isSyncingCloud ? '処理中...' : 'クラウドから復元'}
+                  </button>
+                </div>
+              )}
+
               <button
                 onClick={handleExportData}
                 className="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-indigo-500/50 flex items-center justify-between text-xs text-slate-200 transition-colors"

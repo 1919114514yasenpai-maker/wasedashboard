@@ -1,10 +1,10 @@
 {
-  "projectId": "wasedashboard",
+  "projectId": "waseapp-works-waseworkapp",
   "appId": "1:YOUR_APP_ID:web:YOUR_APP_ID",
   "apiKey": "YOUR_FIREBASE_API_KEY",
-  "authDomain": "wasedashboard.firebaseapp.com",
+  "authDomain": "waseapp-works-waseworkapp.firebaseapp.com",
   "firestoreDatabaseId": "ai-studio-scholardash-fb258ebd-eb8b-49ce-b7ca-6fecc2d5ad46",
-  "storageBucket": "wasedashboard.firebasestorage.app",
+  "storageBucket": "waseapp-works-waseworkapp.firebasestorage.app",
   "messagingSenderId": "YOUR_SENDER_ID",
   "measurementId": "",
   "oAuthClientId": "YOUR_OAUTH_CLIENT_ID",

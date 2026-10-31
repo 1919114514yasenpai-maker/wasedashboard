@@ -31,10 +31,14 @@ jobs:
       - name: Build application
         run: npm run build
 
-      - name: Deploy to Firebase Hosting Live Channel
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: '${{ secrets.GITHUB_TOKEN }}'
-          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_WASEDASHBOARD }}'
-          channelId: live
-          projectId: wasedashboard
+      - name: Deploy to Firebase Hosting
+        run: |
+          if [ -n "${{ secrets.FIREBASE_SERVICE_ACCOUNT_WASEDASHBOARD }}" ]; then
+            echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT_WASEDASHBOARD }}' > sa_key.json
+            export GOOGLE_APPLICATION_CREDENTIALS=sa_key.json
+          fi
+          npx firebase-tools deploy --only hosting --project waseapp-works-waseworkapp --non-interactive
+          rm -f sa_key.json
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+
