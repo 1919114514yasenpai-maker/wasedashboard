@@ -15,109 +15,12 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
-    // Users collection and subcollections
+    // User data document and all subcollections (schedules, tasks, links, memos, simulations, events, clubEvents, settings, backups)
     match /users/{userId} {
-      allow get: if isOwner(userId);
-      allow create, update: if isOwner(userId) && request.resource.data.uid == request.auth.uid;
-      allow delete: if false;
+      allow read, write: if isOwner(userId);
 
-      // Timetable schedules
-      match /schedules/{scheduleId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(scheduleId)
-          && request.resource.data.userId == request.auth.uid
-          && request.resource.data.subject is string && request.resource.data.subject.size() <= 200;
-        allow update: if isOwner(userId) && isValidId(scheduleId)
-          && request.resource.data.userId == request.auth.uid
-          && request.resource.data.subject is string && request.resource.data.subject.size() <= 200;
-        allow delete: if isOwner(userId) && isValidId(scheduleId);
-      }
-
-      // Tasks
-      match /tasks/{taskId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(taskId)
-          && request.resource.data.userId == request.auth.uid
-          && request.resource.data.title is string && request.resource.data.title.size() <= 200;
-        allow update: if isOwner(userId) && isValidId(taskId)
-          && request.resource.data.userId == request.auth.uid
-          && request.resource.data.title is string && request.resource.data.title.size() <= 200;
-        allow delete: if isOwner(userId) && isValidId(taskId);
-      }
-
-      // Quick links
-      match /links/{linkId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(linkId)
-          && request.resource.data.userId == request.auth.uid
-          && request.resource.data.title is string && request.resource.data.title.size() <= 100
-          && request.resource.data.url is string && request.resource.data.url.size() <= 1024;
-        allow update: if isOwner(userId) && isValidId(linkId)
-          && request.resource.data.userId == request.auth.uid
-          && request.resource.data.title is string && request.resource.data.title.size() <= 100
-          && request.resource.data.url is string && request.resource.data.url.size() <= 1024;
-        allow delete: if isOwner(userId) && isValidId(linkId);
-      }
-
-      // Quick memos
-      match /memos/{memoId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(memoId)
-          && request.resource.data.userId == request.auth.uid
-          && request.resource.data.title is string && request.resource.data.title.size() <= 200
-          && request.resource.data.content is string && request.resource.data.content.size() <= 5000;
-        allow update: if isOwner(userId) && isValidId(memoId)
-          && request.resource.data.userId == request.auth.uid
-          && request.resource.data.title is string && request.resource.data.title.size() <= 200
-          && request.resource.data.content is string && request.resource.data.content.size() <= 5000;
-        allow delete: if isOwner(userId) && isValidId(memoId);
-      }
-
-      // Simulations
-      match /simulations/{simId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(simId)
-          && request.resource.data.userId == request.auth.uid
-          && request.resource.data.title is string && request.resource.data.title.size() <= 200;
-        allow update: if isOwner(userId) && isValidId(simId)
-          && request.resource.data.userId == request.auth.uid
-          && request.resource.data.title is string && request.resource.data.title.size() <= 200;
-        allow delete: if isOwner(userId) && isValidId(simId);
-      }
-
-      // Calendar Events
-      match /events/{eventId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(eventId)
-          && request.resource.data.userId == request.auth.uid
-          && request.resource.data.title is string && request.resource.data.title.size() <= 200;
-        allow update: if isOwner(userId) && isValidId(eventId)
-          && request.resource.data.userId == request.auth.uid
-          && request.resource.data.title is string && request.resource.data.title.size() <= 200;
-        allow delete: if isOwner(userId) && isValidId(eventId);
-      }
-
-      // Club & Circle Schedule Events
-      match /clubEvents/{clubEventId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(clubEventId)
-          && request.resource.data.userId == request.auth.uid
-          && request.resource.data.title is string && request.resource.data.title.size() <= 200;
-        allow update: if isOwner(userId) && isValidId(clubEventId)
-          && request.resource.data.userId == request.auth.uid
-          && request.resource.data.title is string && request.resource.data.title.size() <= 200;
-        allow delete: if isOwner(userId) && isValidId(clubEventId);
-      }
-
-      // User Settings (e.g. periodTimes)
-      match /settings/{settingId} {
-        allow get, list: if isOwner(userId);
-        allow create, update: if isOwner(userId) && isValidId(settingId);
-        allow delete: if isOwner(userId) && isValidId(settingId);
+      match /{allSubcollections=**} {
+        allow read, write: if isOwner(userId);
       }
     }
   }

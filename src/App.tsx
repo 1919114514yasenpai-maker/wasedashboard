@@ -379,6 +379,19 @@ export default function App() {
     };
   }, [currentUser]);
 
+  // Helper to sanitize object by removing undefined fields for Firestore setDoc
+  const sanitizeFirestoreData = (obj: any): any => {
+    if (!obj || typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) return obj.map(sanitizeFirestoreData);
+    const cleaned: Record<string, any> = {};
+    for (const [key, val] of Object.entries(obj)) {
+      if (val !== undefined) {
+        cleaned[key] = typeof val === 'object' && val !== null ? sanitizeFirestoreData(val) : val;
+      }
+    }
+    return cleaned;
+  };
+
   // Firestore Sync Helper for operations
   const syncToFirestore = async (
     collectionName: string,
@@ -386,16 +399,17 @@ export default function App() {
     data: any,
     isDelete = false
   ) => {
-    if (!currentUser) return;
+    if (!currentUser || !id) return;
     const path = `users/${currentUser.uid}/${collectionName}/${id}`;
     try {
-      const docRef = doc(db, 'users', currentUser.uid, collectionName, id);
+      const docRef = doc(db, 'users', currentUser.uid, collectionName, String(id));
       if (isDelete) {
         await deleteDoc(docRef);
       } else {
-        await setDoc(docRef, { ...data, userId: currentUser.uid }, { merge: true });
+        const payload = sanitizeFirestoreData({ ...data, userId: currentUser.uid, id: String(id) });
+        await setDoc(docRef, payload, { merge: true });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn(`[Local Priority] Firestore cloud sync deferred for ${path}:`, err);
     }
   };
@@ -579,38 +593,119 @@ export default function App() {
 
   const handlePushToCloud = async () => {
     if (!currentUser) {
-      showToast('クラウド同期にはGoogleログインが必要です', 'error');
+      showToast('クラウド保存にはGoogleログインが必要です', 'error');
       return;
     }
     setIsSyncingCloud(true);
     try {
       const uid = currentUser.uid;
-      for (const item of schedule) {
-        await setDoc(doc(db, 'users', uid, 'schedules', item.id), { ...item, userId: uid }, { merge: true });
-      }
-      for (const task of tasks) {
-        await setDoc(doc(db, 'users', uid, 'tasks', task.id), { ...task, userId: uid }, { merge: true });
-      }
-      for (const link of links) {
-        await setDoc(doc(db, 'users', uid, 'links', link.id), { ...link, userId: uid }, { merge: true });
-      }
-      for (const memo of memos) {
-        await setDoc(doc(db, 'users', uid, 'memos', memo.id), { ...memo, userId: uid }, { merge: true });
-      }
-      for (const sim of savedSimulations) {
-        await setDoc(doc(db, 'users', uid, 'simulations', sim.id), { ...sim, userId: uid }, { merge: true });
-      }
-      for (const ev of events) {
-        await setDoc(doc(db, 'users', uid, 'events', ev.id), { ...ev, userId: uid }, { merge: true });
-      }
-      for (const cev of clubEvents) {
-        await setDoc(doc(db, 'users', uid, 'clubEvents', cev.id), { ...cev, userId: uid }, { merge: true });
-      }
-      await setDoc(doc(db, 'users', uid, 'settings', 'periodTimes'), { periodTimes }, { merge: true });
 
-      showToast('ローカルデータをFirestoreクラウドへバックアップしました！', 'success');
+      // 1. User Profile
+      await setDoc(
+        doc(db, 'users', uid),
+        sanitizeFirestoreData({
+          uid,
+          email: currentUser.email || '',
+          displayName: currentUser.displayName || '',
+          photoURL: currentUser.photoURL || '',
+          updatedAt: new Date().toISOString(),
+        }),
+        { merge: true }
+      );
+
+      // 2. Aggregated Backup Document in users/{uid}/backups/latest
+      const fullBackup = {
+        userId: uid,
+        updatedAt: new Date().toISOString(),
+        schedule,
+        periodTimes,
+        tasks,
+        links,
+        memos,
+        savedSimulations,
+        events,
+        clubEvents,
+      };
+      await setDoc(
+        doc(db, 'users', uid, 'backups', 'latest'),
+        sanitizeFirestoreData(fullBackup),
+        { merge: true }
+      );
+
+      // 3. Save each collection document individually
+      for (const item of schedule) {
+        const docId = item.id ? String(item.id) : `sched_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+        await setDoc(
+          doc(db, 'users', uid, 'schedules', docId),
+          sanitizeFirestoreData({ ...item, id: docId, userId: uid }),
+          { merge: true }
+        );
+      }
+
+      for (const task of tasks) {
+        const docId = task.id ? String(task.id) : `task_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+        await setDoc(
+          doc(db, 'users', uid, 'tasks', docId),
+          sanitizeFirestoreData({ ...task, id: docId, userId: uid }),
+          { merge: true }
+        );
+      }
+
+      for (const link of links) {
+        const docId = link.id ? String(link.id) : `link_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+        await setDoc(
+          doc(db, 'users', uid, 'links', docId),
+          sanitizeFirestoreData({ ...link, id: docId, userId: uid }),
+          { merge: true }
+        );
+      }
+
+      for (const memo of memos) {
+        const docId = memo.id ? String(memo.id) : `memo_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+        await setDoc(
+          doc(db, 'users', uid, 'memos', docId),
+          sanitizeFirestoreData({ ...memo, id: docId, userId: uid }),
+          { merge: true }
+        );
+      }
+
+      for (const sim of savedSimulations) {
+        const docId = sim.id ? String(sim.id) : `sim_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+        await setDoc(
+          doc(db, 'users', uid, 'simulations', docId),
+          sanitizeFirestoreData({ ...sim, id: docId, userId: uid }),
+          { merge: true }
+        );
+      }
+
+      for (const ev of events) {
+        const docId = ev.id ? String(ev.id) : `ev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+        await setDoc(
+          doc(db, 'users', uid, 'events', docId),
+          sanitizeFirestoreData({ ...ev, id: docId, userId: uid }),
+          { merge: true }
+        );
+      }
+
+      for (const cev of clubEvents) {
+        const docId = cev.id ? String(cev.id) : `club_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+        await setDoc(
+          doc(db, 'users', uid, 'clubEvents', docId),
+          sanitizeFirestoreData({ ...cev, id: docId, userId: uid }),
+          { merge: true }
+        );
+      }
+
+      await setDoc(
+        doc(db, 'users', uid, 'settings', 'periodTimes'),
+        sanitizeFirestoreData({ periodTimes, userId: uid }),
+        { merge: true }
+      );
+
+      showToast('ローカルデータをFirestoreクラウドへ正常に保存しました！', 'success');
     } catch (err: any) {
-      showToast(`クラウド同期エラー: ${err.message || '保存に失敗しました'}`, 'error');
+      console.error('Push to cloud error:', err);
+      showToast(`クラウド保存エラー: ${err.message || '保存に失敗しました'}`, 'error');
     } finally {
       setIsSyncingCloud(false);
     }
@@ -624,6 +719,22 @@ export default function App() {
     setIsSyncingCloud(true);
     try {
       const uid = currentUser.uid;
+
+      // 1. Try reading latest aggregated backup
+      const backupSnap = await getDoc(doc(db, 'users', uid, 'backups', 'latest'));
+      if (backupSnap.exists()) {
+        const bData = backupSnap.data();
+        if (bData.schedule && Array.isArray(bData.schedule)) setSchedule(bData.schedule);
+        if (bData.periodTimes && Array.isArray(bData.periodTimes)) setPeriodTimes(bData.periodTimes);
+        if (bData.tasks && Array.isArray(bData.tasks)) setTasks(bData.tasks);
+        if (bData.links && Array.isArray(bData.links)) setLinks(bData.links);
+        if (bData.memos && Array.isArray(bData.memos)) setMemos(bData.memos);
+        if (bData.savedSimulations && Array.isArray(bData.savedSimulations)) setSavedSimulations(bData.savedSimulations);
+        if (bData.events && Array.isArray(bData.events)) setEvents(bData.events);
+        if (bData.clubEvents && Array.isArray(bData.clubEvents)) setClubEvents(bData.clubEvents);
+      }
+
+      // 2. Read individual subcollections
       const schedSnap = await getDocs(collection(db, 'users', uid, 'schedules'));
       const schedList = schedSnap.docs.map((d) => d.data() as ScheduleItem);
       if (schedList.length > 0) setSchedule(schedList);
@@ -657,8 +768,9 @@ export default function App() {
         setPeriodTimes(setSnap.data().periodTimes);
       }
 
-      showToast('Firestoreクラウドから最新データを端末に同期しました！', 'success');
+      showToast('Firestoreクラウドから最新データを復元しました！', 'success');
     } catch (err: any) {
+      console.error('Pull from cloud error:', err);
       showToast(`クラウドデータ復元エラー: ${err.message || '取得に失敗しました'}`, 'error');
     } finally {
       setIsSyncingCloud(false);
