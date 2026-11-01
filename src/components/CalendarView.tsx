@@ -23,6 +23,10 @@ import {
   FileText,
   Bookmark,
   Sparkles,
+  Smartphone,
+  Download,
+  ExternalLink,
+  Share2,
 } from 'lucide-react';
 import {
   CalendarEvent,
@@ -32,8 +36,13 @@ import {
   formatDateToYYYYMMDD,
   buildMonthMatrix,
   CalendarDayCell,
+  generateICSContent,
+  downloadICSFile,
+  generateGoogleCalendarUrl,
+  exportSingleEventICS,
 } from '../utils/calendar';
 import { ScheduleItem, PeriodTime, DAY_NAMES } from '../utils/calc';
+import { ClubEvent } from '../utils/club';
 import { TaskItem } from '../App';
 
 interface CalendarViewProps {
@@ -41,6 +50,7 @@ interface CalendarViewProps {
   tasks: TaskItem[];
   schedule: ScheduleItem[];
   periodTimes: PeriodTime[];
+  clubEvents?: ClubEvent[];
   onAddEvent: (event: Omit<CalendarEvent, 'id' | 'createdAt'>) => void;
   onUpdateEvent: (event: CalendarEvent) => void;
   onDeleteEvent: (id: string) => void;
@@ -62,6 +72,7 @@ export function CalendarView({
   tasks,
   schedule,
   periodTimes,
+  clubEvents = [],
   onAddEvent,
   onUpdateEvent,
   onDeleteEvent,
@@ -73,6 +84,14 @@ export function CalendarView({
   const [selectedDate, setSelectedDate] = useState<string>(formatDateToYYYYMMDD(today));
   const [viewMode, setViewMode] = useState<'month' | 'agenda'>('month');
   const [categoryFilter, setCategoryFilter] = useState<'all' | EventCategory>('all');
+
+  // Native Device Calendar (.ics) Sync Modal State
+  const [icsModalOpen, setIcsModalOpen] = useState(false);
+
+  const handleExportFullICS = () => {
+    const icsStr = generateICSContent(events, schedule, periodTimes, clubEvents);
+    downloadICSFile(icsStr, `wasedashboard_calendar_${currentYear}_${currentMonth + 1}.ics`);
+  };
 
   // Modal State
   const [modalOpen, setModalOpen] = useState(false);
@@ -321,6 +340,16 @@ export function CalendarView({
               予定一覧
             </button>
           </div>
+
+          {/* Native Calendar Sync Button */}
+          <button
+            onClick={() => setIcsModalOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-semibold shadow-sm transition-all active:scale-95"
+            title="iPhone / Android 端末の純正カレンダーアプリと一括連携"
+          >
+            <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+            <span>端末カレンダー連携</span>
+          </button>
 
           {/* Add Event Button */}
           <button
@@ -664,6 +693,22 @@ export function CalendarView({
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
                               <button
+                                onClick={() => exportSingleEventICS(ev)}
+                                className="p-1 rounded text-slate-400 hover:text-emerald-300 hover:bg-slate-900"
+                                title="端末の純正カレンダーに追加 (.ics)"
+                              >
+                                <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+                              </button>
+                              <a
+                                href={generateGoogleCalendarUrl(ev)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-1 rounded text-slate-400 hover:text-sky-300 hover:bg-slate-900"
+                                title="Googleカレンダーに追加"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5 text-sky-400" />
+                              </a>
+                              <button
                                 onClick={() => openEditModal(ev)}
                                 className="p-1 rounded text-slate-400 hover:text-indigo-300 hover:bg-slate-900"
                                 title="編集"
@@ -997,6 +1042,86 @@ export function CalendarView({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Native Calendar Sync Modal */}
+      {icsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Smartphone className="w-4 h-4 text-emerald-400" />
+                端末純正カレンダーとの連携 (.ics / WebCal)
+              </h3>
+              <button
+                onClick={() => setIcsModalOpen(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              wasedashboardに登録された全予定（テスト・課題提出日・授業・部活サークル日程）を標準iCalendar (.ics) 形式で一括書き出し、iPhoneやAndroidの純正カレンダーアプリに読み込ませることができます。
+            </p>
+
+            {/* Main Export Action */}
+            <div className="p-4 rounded-xl bg-emerald-950/20 border border-emerald-500/30 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-bold text-white flex items-center gap-1.5">
+                    <Download className="w-4 h-4 text-emerald-400" />
+                    全予定 (.ics) を書き出す
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    登録済みイベント: {events.length}件 / 部活予定: {clubEvents.length}件
+                  </p>
+                </div>
+                <button
+                  onClick={handleExportFullICS}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white shadow-md shadow-emerald-600/30 transition-all flex items-center gap-1.5 active:scale-95 shrink-0"
+                >
+                  <Download className="w-4 h-4" />
+                  .icsをダウンロード
+                </button>
+              </div>
+            </div>
+
+            {/* Step Guides for OS */}
+            <div className="space-y-2 text-xs">
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+                <h5 className="font-bold text-indigo-300 flex items-center gap-1.5">
+                  <Smartphone className="w-3.5 h-3.5 text-indigo-400" />
+                  iPhone / iPad (iOS Appleカレンダー) での追加方法
+                </h5>
+                <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-300 pl-1">
+                  <li>上の <strong>「.icsをダウンロード」</strong> をタップ</li>
+                  <li>Safariのダウンロード完了通知をタップしてファイルを開く</li>
+                  <li>画面右上の <strong>「すべて追加」</strong> をタップすると、Apple純正カレンダーに全予定が即時インポートされます</li>
+                </ol>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1.5">
+                <h5 className="font-bold text-sky-300 flex items-center gap-1.5">
+                  <ExternalLink className="w-3.5 h-3.5 text-sky-400" />
+                  Android / Googleカレンダー / Mac / PC での追加方法
+                </h5>
+                <p className="text-[11px] text-slate-300">
+                  ダウンロードされた `.ics` ファイルを開くと、Android標準カレンダーまたはGoogleカレンダーアプリの「インポート」画面が自動で立ち上がり一括追加できます。
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end border-t border-slate-800">
+              <button
+                onClick={() => setIcsModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200"
+              >
+                閉じる
+              </button>
+            </div>
           </div>
         </div>
       )}

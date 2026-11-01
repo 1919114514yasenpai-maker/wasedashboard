@@ -25,6 +25,7 @@ import {
   ChevronRight,
   ShieldAlert,
   Sparkles,
+  Smartphone,
 } from 'lucide-react';
 import {
   ClubEvent,
@@ -32,6 +33,7 @@ import {
   CLUB_CATEGORIES,
   getClubCategoryInfo,
 } from '../utils/club';
+import { exportSingleEventICS } from '../utils/calendar';
 
 interface ClubScheduleViewProps {
   clubEvents: ClubEvent[];
@@ -369,6 +371,24 @@ export function ClubScheduleView({
                     </div>
 
                     <div className="flex items-center gap-1 opacity-90 group-hover:opacity-100">
+                      <button
+                        onClick={() =>
+                          exportSingleEventICS({
+                            title: `【${event.clubName || 'サークル'}】${event.title}${event.opponent ? ` vs ${event.opponent}` : ''}`,
+                            date: event.date,
+                            endDate: event.endDate,
+                            startTime: event.startTime,
+                            endTime: event.endTime,
+                            isAllDay: !!event.isAllDay,
+                            location: event.location,
+                            memo: event.memo,
+                          })
+                        }
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-300 hover:bg-slate-800"
+                        title="端末の純正カレンダーアプリに追加 (.ics)"
+                      >
+                        <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+                      </button>
                       {onSyncToCalendar && (
                         <button
                           onClick={() => onSyncToCalendar(event)}

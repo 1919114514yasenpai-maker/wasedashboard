@@ -1854,6 +1854,7 @@ export default function App() {
             tasks={tasks}
             schedule={schedule}
             periodTimes={periodTimes}
+            clubEvents={clubEvents}
             onAddEvent={handleAddEvent}
             onUpdateEvent={handleUpdateEvent}
             onDeleteEvent={handleDeleteEvent}
