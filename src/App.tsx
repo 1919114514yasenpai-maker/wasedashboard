@@ -40,7 +40,10 @@ import {
   CalendarDays,
   Trophy,
   Dumbbell,
+  Shield,
+  Lock,
 } from 'lucide-react';
+import { compressAndEncrypt, decryptAndDecompress } from './utils/crypto';
 import {
   ScheduleItem,
   PeriodTime,
@@ -613,7 +616,7 @@ export default function App() {
         { merge: true }
       );
 
-      // 2. Aggregated Backup Document in users/{uid}/backups/latest
+      // 2. Aggregated Backup Document with LZ-String Compression & AES-GCM Encryption
       const fullBackup = {
         userId: uid,
         updatedAt: new Date().toISOString(),
@@ -626,9 +629,18 @@ export default function App() {
         events,
         clubEvents,
       };
+
+      const encryptedPayload = await compressAndEncrypt(fullBackup, uid);
+
+      // Save encrypted snapshot to backups/encrypted_latest & backups/latest
+      await setDoc(
+        doc(db, 'users', uid, 'backups', 'encrypted_latest'),
+        sanitizeFirestoreData(encryptedPayload),
+        { merge: true }
+      );
       await setDoc(
         doc(db, 'users', uid, 'backups', 'latest'),
-        sanitizeFirestoreData(fullBackup),
+        sanitizeFirestoreData(encryptedPayload),
         { merge: true }
       );
 
@@ -702,7 +714,7 @@ export default function App() {
         { merge: true }
       );
 
-      showToast('ローカルデータをFirestoreクラウドへ正常に保存しました！', 'success');
+      showToast('データを軽量化（LZ-String圧縮 & AES-256暗号化）してFirestoreクラウドへ正常保存しました！', 'success');
     } catch (err: any) {
       console.error('Push to cloud error:', err);
       showToast(`クラウド保存エラー: ${err.message || '保存に失敗しました'}`, 'error');
@@ -720,18 +732,25 @@ export default function App() {
     try {
       const uid = currentUser.uid;
 
-      // 1. Try reading latest aggregated backup
-      const backupSnap = await getDoc(doc(db, 'users', uid, 'backups', 'latest'));
+      // 1. Try reading compressed & encrypted aggregated backup first
+      let backupSnap = await getDoc(doc(db, 'users', uid, 'backups', 'encrypted_latest'));
+      if (!backupSnap.exists()) {
+        backupSnap = await getDoc(doc(db, 'users', uid, 'backups', 'latest'));
+      }
+
       if (backupSnap.exists()) {
-        const bData = backupSnap.data();
-        if (bData.schedule && Array.isArray(bData.schedule)) setSchedule(bData.schedule);
-        if (bData.periodTimes && Array.isArray(bData.periodTimes)) setPeriodTimes(bData.periodTimes);
-        if (bData.tasks && Array.isArray(bData.tasks)) setTasks(bData.tasks);
-        if (bData.links && Array.isArray(bData.links)) setLinks(bData.links);
-        if (bData.memos && Array.isArray(bData.memos)) setMemos(bData.memos);
-        if (bData.savedSimulations && Array.isArray(bData.savedSimulations)) setSavedSimulations(bData.savedSimulations);
-        if (bData.events && Array.isArray(bData.events)) setEvents(bData.events);
-        if (bData.clubEvents && Array.isArray(bData.clubEvents)) setClubEvents(bData.clubEvents);
+        const rawDoc = backupSnap.data();
+        const bData = await decryptAndDecompress(rawDoc, uid);
+        if (bData) {
+          if (bData.schedule && Array.isArray(bData.schedule)) setSchedule(bData.schedule);
+          if (bData.periodTimes && Array.isArray(bData.periodTimes)) setPeriodTimes(bData.periodTimes);
+          if (bData.tasks && Array.isArray(bData.tasks)) setTasks(bData.tasks);
+          if (bData.links && Array.isArray(bData.links)) setLinks(bData.links);
+          if (bData.memos && Array.isArray(bData.memos)) setMemos(bData.memos);
+          if (bData.savedSimulations && Array.isArray(bData.savedSimulations)) setSavedSimulations(bData.savedSimulations);
+          if (bData.events && Array.isArray(bData.events)) setEvents(bData.events);
+          if (bData.clubEvents && Array.isArray(bData.clubEvents)) setClubEvents(bData.clubEvents);
+        }
       }
 
       // 2. Read individual subcollections
@@ -3651,6 +3670,12 @@ export default function App() {
                     <CloudOff className="w-3.5 h-3.5" /> 未ログイン（端末内のみ）
                   </span>
                 )}
+              </div>
+              <div className="flex items-center justify-between pt-1.5 border-t border-slate-800/80">
+                <span className="text-slate-400">データ保護 & 圧縮:</span>
+                <span className="font-medium text-emerald-300 flex items-center gap-1">
+                  <Shield className="w-3.5 h-3.5 text-emerald-400" /> LZ-String 圧縮 & AES-256-GCM 暗号化
+                </span>
               </div>
             </div>
 
