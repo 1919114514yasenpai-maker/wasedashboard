@@ -89,6 +89,30 @@ service cloud.firestore {
         allow delete: if isOwner(userId) && isValidId(simId);
       }
 
+      // Calendar Events
+      match /events/{eventId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(eventId)
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.title is string && request.resource.data.title.size() <= 200;
+        allow update: if isOwner(userId) && isValidId(eventId)
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.title is string && request.resource.data.title.size() <= 200;
+        allow delete: if isOwner(userId) && isValidId(eventId);
+      }
+
+      // Club & Circle Schedule Events
+      match /clubEvents/{clubEventId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(clubEventId)
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.title is string && request.resource.data.title.size() <= 200;
+        allow update: if isOwner(userId) && isValidId(clubEventId)
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.title is string && request.resource.data.title.size() <= 200;
+        allow delete: if isOwner(userId) && isValidId(clubEventId);
+      }
+
       // User Settings (e.g. periodTimes)
       match /settings/{settingId} {
         allow get, list: if isOwner(userId);

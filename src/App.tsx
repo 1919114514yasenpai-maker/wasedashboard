@@ -37,6 +37,9 @@ import {
   LogIn,
   LogOut,
   User as UserIcon,
+  CalendarDays,
+  Trophy,
+  Dumbbell,
 } from 'lucide-react';
 import {
   ScheduleItem,
@@ -49,6 +52,10 @@ import {
   calculateWeightedFinalScore,
   WeightedExamItem,
 } from './utils/calc';
+import { CalendarEvent } from './utils/calendar';
+import { ClubEvent, getUpcomingClubEvents } from './utils/club';
+import { CalendarView } from './components/CalendarView';
+import { ClubScheduleView } from './components/ClubScheduleView';
 import {
   auth,
   db,
@@ -113,10 +120,12 @@ const STORAGE_KEYS = {
   LINKS: 'campushack_links_v1',
   MEMOS: 'campushack_memos_v1',
   SIMULATIONS: 'campushack_simulations_v1',
+  EVENTS: 'campushack_events_v1',
+  CLUB_EVENTS: 'campushack_club_events_v1',
 };
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'schedule' | 'tasks' | 'simulator' | 'memos'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'schedule' | 'tasks' | 'calendar' | 'club' | 'simulator' | 'memos'>('dashboard');
   const [currentTime, setCurrentTime] = useState(new Date());
 
   // Firebase Auth state
@@ -185,6 +194,24 @@ export default function App() {
     }
   });
 
+  const [events, setEvents] = useState<CalendarEvent[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.EVENTS);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [clubEvents, setClubEvents] = useState<ClubEvent[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.CLUB_EVENTS);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
   // LocalStorage sync
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.SCHEDULE, JSON.stringify(schedule));
@@ -209,6 +236,14 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.SIMULATIONS, JSON.stringify(savedSimulations));
   }, [savedSimulations]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
+  }, [events]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.CLUB_EVENTS, JSON.stringify(clubEvents));
+  }, [clubEvents]);
 
   // Firebase Auth listener and connection validation
   useEffect(() => {
@@ -297,6 +332,28 @@ export default function App() {
       (err) => handleFirestoreError(err, OperationType.LIST, simsPath)
     );
 
+    // Listen to Calendar Events
+    const eventsPath = `users/${uid}/events`;
+    const unsubEvents = onSnapshot(
+      collection(db, 'users', uid, 'events'),
+      (snapshot) => {
+        const items = snapshot.docs.map((d) => d.data() as CalendarEvent);
+        if (items.length > 0) setEvents(items);
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, eventsPath)
+    );
+
+    // Listen to Club Events
+    const clubEventsPath = `users/${uid}/clubEvents`;
+    const unsubClubEvents = onSnapshot(
+      collection(db, 'users', uid, 'clubEvents'),
+      (snapshot) => {
+        const items = snapshot.docs.map((d) => d.data() as ClubEvent);
+        if (items.length > 0) setClubEvents(items);
+      },
+      (err) => handleFirestoreError(err, OperationType.LIST, clubEventsPath)
+    );
+
     // Listen to Settings
     const settingsPath = `users/${uid}/settings/periodTimes`;
     const unsubSettings = onSnapshot(
@@ -316,6 +373,8 @@ export default function App() {
       unsubLinks();
       unsubMemos();
       unsubSims();
+      unsubEvents();
+      unsubClubEvents();
       unsubSettings();
     };
   }, [currentUser]);
@@ -541,6 +600,12 @@ export default function App() {
       for (const sim of savedSimulations) {
         await setDoc(doc(db, 'users', uid, 'simulations', sim.id), { ...sim, userId: uid }, { merge: true });
       }
+      for (const ev of events) {
+        await setDoc(doc(db, 'users', uid, 'events', ev.id), { ...ev, userId: uid }, { merge: true });
+      }
+      for (const cev of clubEvents) {
+        await setDoc(doc(db, 'users', uid, 'clubEvents', cev.id), { ...cev, userId: uid }, { merge: true });
+      }
       await setDoc(doc(db, 'users', uid, 'settings', 'periodTimes'), { periodTimes }, { merge: true });
 
       showToast('ローカルデータをFirestoreクラウドへバックアップしました！', 'success');
@@ -579,6 +644,14 @@ export default function App() {
       const simList = simSnap.docs.map((d) => d.data() as SavedSimulation);
       if (simList.length > 0) setSavedSimulations(simList);
 
+      const eventSnap = await getDocs(collection(db, 'users', uid, 'events'));
+      const eventList = eventSnap.docs.map((d) => d.data() as CalendarEvent);
+      if (eventList.length > 0) setEvents(eventList);
+
+      const clubSnap = await getDocs(collection(db, 'users', uid, 'clubEvents'));
+      const clubList = clubSnap.docs.map((d) => d.data() as ClubEvent);
+      if (clubList.length > 0) setClubEvents(clubList);
+
       const setSnap = await getDoc(doc(db, 'users', uid, 'settings', 'periodTimes'));
       if (setSnap.exists() && setSnap.data()?.periodTimes) {
         setPeriodTimes(setSnap.data().periodTimes);
@@ -603,6 +676,8 @@ export default function App() {
       links,
       memos,
       savedSimulations,
+      events,
+      clubEvents,
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -627,6 +702,8 @@ export default function App() {
         if (parsed.links) setLinks(parsed.links);
         if (parsed.memos) setMemos(parsed.memos);
         if (parsed.savedSimulations) setSavedSimulations(parsed.savedSimulations);
+        if (parsed.events) setEvents(parsed.events);
+        if (parsed.clubEvents) setClubEvents(parsed.clubEvents);
         showToast('データを正常に復元しました！', 'success');
         setDataManagementModalOpen(false);
       } catch {
@@ -642,11 +719,102 @@ export default function App() {
     setLinks([]);
     setMemos([]);
     setSavedSimulations([]);
+    setEvents([]);
+    setClubEvents([]);
     setPeriodTimes(DEFAULT_PERIOD_TIMES);
     localStorage.clear();
     setConfirmResetOpen(false);
     setDataManagementModalOpen(false);
     showToast('すべてのデータを初期化しました', 'info');
+  };
+
+  // Calendar Event Handlers
+  const handleAddEvent = (eventData: Omit<CalendarEvent, 'id' | 'createdAt'>) => {
+    const newEvent: CalendarEvent = {
+      ...eventData,
+      id: `ev_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      createdAt: new Date().toISOString(),
+    };
+    setEvents((prev) => [...prev, newEvent]);
+    syncToFirestore('events', newEvent.id, newEvent);
+    showToast('予定を追加しました！', 'success');
+  };
+
+  // Club Event Handlers
+  const handleAddClubEvent = (eventData: Omit<ClubEvent, 'id' | 'createdAt'>) => {
+    const newClubEvent: ClubEvent = {
+      ...eventData,
+      id: `club_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      createdAt: new Date().toISOString(),
+    };
+    setClubEvents((prev) => [...prev, newClubEvent]);
+    syncToFirestore('clubEvents', newClubEvent.id, newClubEvent);
+    showToast('部活・サークルの予定を追加しました！', 'success');
+  };
+
+  const handleUpdateClubEvent = (updated: ClubEvent) => {
+    setClubEvents((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
+    syncToFirestore('clubEvents', updated.id, updated);
+    showToast('部活の予定を更新しました！', 'success');
+  };
+
+  const handleDeleteClubEvent = (id: string) => {
+    setClubEvents((prev) => prev.filter((e) => e.id !== id));
+    syncToFirestore('clubEvents', id, null, true);
+    showToast('部活の予定を削除しました', 'info');
+  };
+
+  const handleSyncClubToCalendar = (clubEvent: ClubEvent) => {
+    const calEvent: CalendarEvent = {
+      id: `ev_sync_${clubEvent.id}`,
+      title: `【部活】${clubEvent.title}${clubEvent.opponent ? ` vs ${clubEvent.opponent}` : ''}`,
+      date: clubEvent.date,
+      endDate: clubEvent.endDate,
+      startTime: clubEvent.startTime,
+      endTime: clubEvent.endTime,
+      isAllDay: !!clubEvent.isAllDay,
+      category: 'event',
+      color: 'bg-indigo-500',
+      location: clubEvent.location,
+      memo: `${clubEvent.clubName ? `所属: ${clubEvent.clubName}\n` : ''}${clubEvent.memo || ''}`,
+      createdAt: new Date().toISOString(),
+    };
+
+    setEvents((prev) => {
+      const exists = prev.some((e) => e.id === calEvent.id);
+      if (exists) {
+        return prev.map((e) => (e.id === calEvent.id ? calEvent : e));
+      }
+      return [...prev, calEvent];
+    });
+    syncToFirestore('events', calEvent.id, calEvent);
+    showToast('全学カレンダーに部活の予定を連携登録しました！', 'success');
+  };
+
+  const handleUpdateEvent = (updatedEvent: CalendarEvent) => {
+    setEvents((prev) => prev.map((e) => (e.id === updatedEvent.id ? updatedEvent : e)));
+    syncToFirestore('events', updatedEvent.id, updatedEvent);
+    showToast('予定を更新しました！', 'success');
+  };
+
+  const handleDeleteEvent = (id: string) => {
+    setEvents((prev) => prev.filter((e) => e.id !== id));
+    syncToFirestore('events', id, null, true);
+    showToast('予定を削除しました', 'info');
+  };
+
+  const handleToggleTask = (id: string) => {
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t.id === id) {
+          const updatedCompleted = !t.completed;
+          syncToFirestore('tasks', t.id, { ...t, completed: updatedCompleted });
+          showToast(updatedCompleted ? '課題を完了にしました！' : '課題を未完了に戻しました');
+          return { ...t, completed: updatedCompleted };
+        }
+        return t;
+      })
+    );
   };
 
   const subjectList = useMemo(() => {
@@ -725,6 +893,31 @@ export default function App() {
           >
             <Calendar className="w-3.5 h-3.5" />
             時間割
+          </button>
+          <button
+            onClick={() => setActiveTab('calendar')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+              activeTab === 'calendar'
+                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+            }`}
+          >
+            <CalendarDays className="w-3.5 h-3.5" />
+            カレンダー
+          </button>
+          <button
+            onClick={() => setActiveTab('club')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all relative ${
+              activeTab === 'club'
+                ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+            }`}
+          >
+            <Trophy className="w-3.5 h-3.5" />
+            部活・サークル
+            {clubEvents.length > 0 && (
+              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            )}
           </button>
           <button
             onClick={() => setActiveTab('tasks')}
@@ -1012,8 +1205,8 @@ export default function App() {
               </div>
             </section>
 
-            {/* Quick Overview Grid: Tasks summary, Quick simulator snippet, Quick Links */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Quick Overview Grid: Tasks summary, Quick simulator snippet, Quick Links, Club schedule */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               {/* Card 1: Urgent Tasks / Assignments */}
               <div className="rounded-2xl bg-slate-900/70 border border-slate-800/80 p-5 flex flex-col justify-between shadow-lg">
                 <div>
@@ -1234,6 +1427,134 @@ export default function App() {
                   リンクを追加
                 </button>
               </div>
+
+              {/* Card 4: Club & Circle Schedule Widget */}
+              <div className="rounded-2xl bg-slate-900/70 border border-slate-800/80 p-5 flex flex-col justify-between shadow-lg">
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <Trophy className="w-4 h-4 text-emerald-400" />
+                      <h3 className="text-sm font-bold text-white">部活・サークルの最新予定</h3>
+                    </div>
+                    <button
+                      onClick={() => setActiveTab('club')}
+                      className="text-xs text-emerald-400 hover:text-emerald-300 font-medium"
+                    >
+                      部活画面へ
+                    </button>
+                  </div>
+
+                  {clubEvents.length === 0 ? (
+                    <div className="text-center py-8">
+                      <div className="w-10 h-10 rounded-full bg-emerald-500/10 mx-auto flex items-center justify-center text-emerald-400 mb-2">
+                        <Dumbbell className="w-5 h-5" />
+                      </div>
+                      <p className="text-xs text-slate-400">部活・サークルの予定はありません</p>
+                      <button
+                        onClick={() => setActiveTab('club')}
+                        className="mt-3 px-3 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-medium transition-all"
+                      >
+                        + 練習・試合を登録
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {getUpcomingClubEvents(clubEvents, 3).map((event) => (
+                        <div
+                          key={event.id}
+                          className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 flex items-center justify-between gap-2"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                {event.date.slice(5)}
+                              </span>
+                              <span className="text-xs font-bold text-white truncate">
+                                {event.title}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
+                              {event.startTime && <span>⏰ {event.startTime}</span>}
+                              {event.location && <span className="truncate">📍 {event.location}</span>}
+                            </div>
+                          </div>
+                          {event.opponent && (
+                            <span className="text-[10px] font-bold text-rose-300 bg-rose-500/20 px-1.5 py-0.5 rounded border border-rose-500/30 shrink-0">
+                              VS {event.opponent}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => setActiveTab('club')}
+                  className="mt-4 w-full py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-semibold transition-all flex items-center justify-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  部活・サークルの予定を追加
+                </button>
+              </div>
+            </div>
+
+            {/* Upcoming Schedule / Calendar Summary Section */}
+            <div className="rounded-2xl bg-slate-900/70 border border-slate-800/80 p-5 shadow-lg space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CalendarDays className="w-4 h-4 text-indigo-400" />
+                  <h3 className="text-sm font-bold text-white">直近の予定・カレンダー</h3>
+                </div>
+                <button
+                  onClick={() => setActiveTab('calendar')}
+                  className="text-xs text-indigo-400 hover:text-indigo-300 font-medium flex items-center gap-1"
+                >
+                  カレンダーを開く <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {events.length === 0 ? (
+                <div className="p-4 rounded-xl bg-slate-950/40 border border-slate-900 text-center flex flex-col items-center justify-center py-6">
+                  <CalendarDays className="w-8 h-8 text-slate-600 mb-2" />
+                  <p className="text-xs text-slate-400">予定がまだ登録されていません</p>
+                  <button
+                    onClick={() => setActiveTab('calendar')}
+                    className="mt-2.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold text-white shadow-sm"
+                  >
+                    + カレンダーで予定を追加
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {events
+                    .slice()
+                    .sort((a, b) => a.date.localeCompare(b.date))
+                    .slice(0, 4)
+                    .map((ev) => (
+                      <div
+                        key={ev.id}
+                        onClick={() => setActiveTab('calendar')}
+                        className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/70 hover:border-indigo-500/40 hover:bg-slate-900/60 cursor-pointer transition-all space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-mono text-indigo-300 font-semibold">{ev.date}</span>
+                          <span className="text-[10px] text-slate-500">{ev.isAllDay ? '終日' : ev.startTime || ''}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="w-2 h-2 rounded-full shrink-0"
+                            style={{ backgroundColor: ev.color || '#6366f1' }}
+                          />
+                          <p className="text-xs font-bold text-slate-100 truncate">{ev.title}</p>
+                        </div>
+                        {ev.location && (
+                          <p className="text-[10px] text-slate-400 truncate">📍 {ev.location}</p>
+                        )}
+                      </div>
+                    ))}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1391,6 +1712,35 @@ export default function App() {
               </span>
             </div>
           </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* TAB: CALENDAR (統合カレンダー) */}
+        {/* ========================================================= */}
+        {activeTab === 'calendar' && (
+          <CalendarView
+            events={events}
+            tasks={tasks}
+            schedule={schedule}
+            periodTimes={periodTimes}
+            onAddEvent={handleAddEvent}
+            onUpdateEvent={handleUpdateEvent}
+            onDeleteEvent={handleDeleteEvent}
+            onToggleTask={handleToggleTask}
+          />
+        )}
+
+        {/* ========================================================= */}
+        {/* TAB: CLUB & CIRCLE (部活・サークル管理) */}
+        {/* ========================================================= */}
+        {activeTab === 'club' && (
+          <ClubScheduleView
+            clubEvents={clubEvents}
+            onAddEvent={handleAddClubEvent}
+            onUpdateEvent={handleUpdateClubEvent}
+            onDeleteEvent={handleDeleteClubEvent}
+            onSyncToCalendar={handleSyncClubToCalendar}
+          />
         )}
 
         {/* ========================================================= */}
@@ -2977,7 +3327,7 @@ export default function App() {
               あなたの学校のチャイム時刻に合わせて変更できます。タイマーのカウントダウンもこの時刻に連動します。
             </p>
 
-            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+            <div className="space-y-3 max-h-[55vh] overflow-y-auto pr-1">
               {periodTimes.map((p, idx) => (
                 <div
                   key={p.period}
@@ -3032,9 +3382,87 @@ export default function App() {
                       }}
                       className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-white text-xs font-mono"
                     />
+
+                    {periodTimes.length > 1 && idx === periodTimes.length - 1 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = periodTimes.slice(0, -1);
+                          setPeriodTimes(updated);
+                          if (currentUser) {
+                            setDoc(
+                              doc(db, 'users', currentUser.uid, 'settings', 'periodTimes'),
+                              { periodTimes: updated },
+                              { merge: true }
+                            ).catch((err) =>
+                              handleFirestoreError(
+                                err,
+                                OperationType.WRITE,
+                                `users/${currentUser.uid}/settings/periodTimes`
+                              )
+                            );
+                          }
+                          showToast(`${p.period}限を削除しました`, 'info');
+                        }}
+                        className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-slate-800"
+                        title="この時限を削除"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
+            </div>
+
+            {/* Button to add extra period (6限, 7限, 8限...) */}
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const nextPeriodNum = periodTimes.length + 1;
+                  const lastPeriod = periodTimes[periodTimes.length - 1];
+                  let newStart = '18:15';
+                  let newEnd = '19:45';
+
+                  if (lastPeriod) {
+                    const [lh, lm] = lastPeriod.end.split(':').map(Number);
+                    const startTotal = (lh || 18) * 60 + (lm || 0) + 15;
+                    const endTotal = startTotal + 90;
+
+                    const sh = String(Math.floor(startTotal / 60) % 24).padStart(2, '0');
+                    const sm = String(startTotal % 60).padStart(2, '0');
+                    const eh = String(Math.floor(endTotal / 60) % 24).padStart(2, '0');
+                    const em = String(endTotal % 60).padStart(2, '0');
+
+                    newStart = `${sh}:${sm}`;
+                    newEnd = `${eh}:${em}`;
+                  }
+
+                  const updated = [
+                    ...periodTimes,
+                    { period: nextPeriodNum, start: newStart, end: newEnd },
+                  ];
+                  setPeriodTimes(updated);
+                  if (currentUser) {
+                    setDoc(
+                      doc(db, 'users', currentUser.uid, 'settings', 'periodTimes'),
+                      { periodTimes: updated },
+                      { merge: true }
+                    ).catch((err) =>
+                      handleFirestoreError(
+                        err,
+                        OperationType.WRITE,
+                        `users/${currentUser.uid}/settings/periodTimes`
+                      )
+                    );
+                  }
+                  showToast(`${nextPeriodNum}限を追加しました！`, 'success');
+                }}
+                className="w-full py-2 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition-all flex items-center justify-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />+ 時限を追加 ({periodTimes.length + 1}限...)
+              </button>
             </div>
 
             <div className="flex items-center justify-between pt-3 border-t border-slate-800">
@@ -3054,7 +3482,7 @@ export default function App() {
                       )
                     );
                   }
-                  showToast('デフォルトの時限設定に戻しました');
+                  showToast('デフォルトの時限設定（1〜7限）に戻しました');
                 }}
                 className="text-xs text-slate-400 hover:text-white flex items-center gap-1"
               >
@@ -3279,6 +3707,15 @@ export default function App() {
         >
           <Calendar className="w-4 h-4" />
           時間割
+        </button>
+        <button
+          onClick={() => setActiveTab('calendar')}
+          className={`flex flex-col items-center gap-1 p-1.5 rounded-lg text-[10px] font-medium transition-all ${
+            activeTab === 'calendar' ? 'text-indigo-400' : 'text-slate-400'
+          }`}
+        >
+          <CalendarDays className="w-4 h-4" />
+          カレンダー
         </button>
         <button
           onClick={() => setActiveTab('tasks')}
